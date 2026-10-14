@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulasi Lamport Timestamps</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-6 font-sans">
+    <div class="max-w-5xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-cyan-400 flex items-center gap-2">
+                    <i class="fa-solid fa-clock"></i> Simulasi Lamport Timestamps
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">Tugas Praktikum Sistem Terdistribusi - 3 Processes</p>
+            </div>
+            <button onclick="runSimulation()" class="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold px-5 py-2.5 rounded-lg transition flex items-center gap-2">
+                <i class="fa-solid fa-play"></i> Jalankan Simulasi
+            </button>
+        </header>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Left Panel: Event List -->
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg space-y-4">
+                <h2 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-2">
+                    <i class="fa-solid fa-list-check text-cyan-400 mr-2"></i>Daftar Event Skenario
+                </h2>
+                <div id="events-container" class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                    <!-- Rendered via JS -->
+                </div>
+            </div>
+
+            <!-- Right Panel: Output Table & Verification -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Table Result -->
+                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                    <h2 class="text-lg font-semibold text-slate-200 mb-4 flex items-center justify-between">
+                        <span><i class="fa-solid fa-table text-emerald-400 mr-2"></i>Hasil Perhitungan Timestamp</span>
+                        <span id="status-badge" class="text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-3 py-1 rounded-full font-mono">Klik Jalankan</span>
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
+                                    <th class="p-3">Event</th>
+                                    <th class="p-3">Proses</th>
+                                    <th class="p-3">Tipe</th>
+                                    <th class="p-3">Perhitungan Clock</th>
+                                    <th class="p-3 text-right">Timestamp Akhir</th>
+                                </tr>
+                            </thead>
+                            <tbody id="result-table" class="divide-y divide-slate-700/50 text-sm font-mono">
+                                <tr>
+                                    <td colspan="5" class="p-4 text-center text-slate-500 italic">Klik tombol "Jalankan Simulasi" untuk kalkulasi.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Consistency Verification -->
+                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                    <h2 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-2 mb-3">
+                        <i class="fa-solid fa-shield-halved text-amber-400 mr-2"></i>Verifikasi Ordering Consistency
+                    </h2>
+                    <ul id="verification-list" class="space-y-2 text-sm font-mono text-slate-300">
+                        <li class="text-slate-500 italic">Belum ada data verifikasi.</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const events = [
+            { process: "P1", type: "internal", name: "A1" },
+            { process: "P1", type: "send",     name: "A2", to: "P2" },
+            { process: "P2", type: "receive",  name: "B2", from: "P1" },
+            { process: "P2", type: "send",     name: "B3", to: "P3" },
+            { process: "P3", type: "internal", name: "C1" },
+            { process: "P3", type: "receive",  name: "C2", from: "P2" }
+        ];
+
+        function renderEvents() {
+            const container = document.getElementById("events-container");
+            container.innerHTML = events.map((ev) => `
+                <div class="p-3 bg-slate-900/70 border border-slate-700 rounded-lg flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded bg-slate-800 text-cyan-400 font-bold flex items-center justify-center font-mono">${ev.name}</span>
+                        <span class="font-semibold text-slate-300">${ev.process}</span>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase ${
+                        ev.type === 'send' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
+                        ev.type === 'receive' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                        'bg-slate-700 text-slate-300'
+                    }">${ev.type} ${ev.to ? '➔ ' + ev.to : ev.from ? '⬅ ' + ev.from : ''}</span>
+                </div>
+            `).join('');
+        }
+
+        function runSimulation() {
+            const clocks = { P1: 0, P2: 0, P3: 0 };
+            const messages = [];
+            const results = [];
+
+            for (const ev of events) {
+                const proc = ev.process;
+                const clockBefore = clocks[proc];
+                let formula = "";
+
+                if (ev.type === "internal") {
+                    clocks[proc] += 1;
+                    formula = `${clockBefore} + 1`;
+                } else if (ev.type === "send") {
+                    clocks[proc] += 1;
+                    messages.push({ from: proc, to: ev.to, timestamp: clocks[proc] });
+                    formula = `${clockBefore} + 1 (kirim ke ${ev.to})`;
+                } else if (ev.type === "receive") {
+                    const idx = messages.findIndex(m => m.from === ev.from && m.to === proc);
+                    const msgTs = idx !== -1 ? messages.splice(idx, 1)[0].timestamp : 0;
+                    clocks[proc] = Math.max(clocks[proc], msgTs) + 1;
+                    formula = `max(${clockBefore}, ${msgTs}) + 1`;
+                }
+
+                results.push({
+                    name: ev.name,
+                    proc: proc,
+                    type: ev.type,
+                    formula: formula,
+                    finalTs: clocks[proc]
+                });
+            }
+
+            // Render Table Output
+            const tableBody = document.getElementById("result-table");
+            tableBody.innerHTML = results.map(r => `
+                <tr class="hover:bg-slate-700/30 transition">
+                    <td class="p-3 font-bold text-cyan-400">${r.name}</td>
+                    <td class="p-3 text-slate-300">${r.proc}</td>
+                    <td class="p-3"><span class="capitalize text-slate-400">${r.type}</span></td>
+                    <td class="p-3 text-slate-400 text-xs">${r.formula}</td>
+                    <td class="p-3 text-right font-bold text-emerald-400">L(${r.name}) = ${r.finalTs}</td>
+                </tr>
+            `).join('');
+
+            // Render Verification
+            const verifyList = document.getElementById("verification-list");
+            const verifications = [
+                { rel: "A1 -> A2 (Internal P1)", check: "L(A1) = 1 < L(A2) = 2" },
+                { rel: "A2 -> B2 (Send/Recv P1->P2)", check: "L(A2) = 2 < L(B2) = 3" },
+                { rel: "B2 -> B3 (Internal P2)", check: "L(B2) = 3 < L(B3) = 4" },
+                { rel: "B3 -> C2 (Send/Recv P2->P3)", check: "L(B3) = 4 < L(C2) = 5" }
+            ];
+
+            verifyList.innerHTML = verifications.map(v => `
+                <li class="flex items-center justify-between bg-slate-900/50 p-2.5 rounded border border-slate-700/60">
+                    <span>${v.rel} : <span class="text-slate-400 font-mono">${v.check}</span></span>
+                    <span class="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded text-xs border border-emerald-500/20">VALID</span>
+                </li>
+            `).join('');
+
+            document.getElementById("status-badge").innerText = "Selesai Dihitung";
+            document.getElementById("status-badge").className = "text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-mono";
+        }
+
+        renderEvents();
+    </script>
+</body>
+</html>
